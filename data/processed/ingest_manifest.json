@@ -1,0 +1,50 @@
+{
+  "fetched_at_utc": "2026-09-25T09:07:18Z",
+  "window": {
+    "start": "2020-09-01",
+    "end": "2025-08-31"
+  },
+  "districts": 735,
+  "sources": [
+    {
+      "key": "open-meteo-era5",
+      "url": "https://archive-api.open-meteo.com/v1/archive",
+      "variables": [
+        "precipitation_sum",
+        "soil_moisture_0_to_7cm_mean",
+        "precipitation_hours"
+      ],
+      "units": {
+        "precipitation_sum": "mm",
+        "soil_moisture_0_to_7cm_mean": "m3/m3",
+        "soil_moisture_3_to_9cm_mean": "m3/m3",
+        "et0_fao_evapotranspiration": "mm",
+        "precipitation_hours": "h",
+        "wind_speed_10m_max": "km/h"
+      },
+      "provider": "Copernicus C3S/ECMWF ERA5 via Open-Meteo"
+    },
+    {
+      "key": "open-meteo-glofas",
+      "url": "https://flood-api.open-meteo.com/v1/flood",
+      "variables": [
+        "river_discharge"
+      ],
+      "units": {
+        "river_discharge": "m3/s"
+      },
+      "provider": "Copernicus GloFAS v4 via Open-Meteo"
+    },
+    {
+      "key": "open-meteo-dem",
+      "url": "https://api.open-meteo.com/v1/elevation",
+      "variables": [
+        "elevation"
+      ],
+      "units": {
+        "elevation": "m"
+      },
+      "provider": "Copernicus DEM GLO-90 via Open-Meteo"
+    }
+  ]
+}

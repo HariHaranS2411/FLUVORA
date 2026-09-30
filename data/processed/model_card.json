@@ -1,0 +1,127 @@
+{
+  "model_version": "v1-y_hydro-hgb-20260925",
+  "selected_algorithm": "hist_gradient_boosting",
+  "selected_target": "y_hydro",
+  "target_definitions": {
+    "y": "GDACS flood report day for district within [t, t+3]",
+    "y_hydro": "GloFAS discharge >= causal 5y rolling P99 for district"
+  },
+  "validation_selection": {
+    "y|logistic_regression": {
+      "n": 139080,
+      "positives": 0,
+      "accuracy_at_0.5": 0.9998777681909692,
+      "precision_at_0.5": 0.0,
+      "recall_at_0.5": 0.0,
+      "f1_at_0.5": 0.0,
+      "roc_auc": NaN,
+      "pr_auc": 0.0,
+      "brier": 0.00011922757255460369
+    },
+    "y|hist_gradient_boosting": {
+      "n": 139080,
+      "positives": 0,
+      "accuracy_at_0.5": 1.0,
+      "precision_at_0.5": 0.0,
+      "recall_at_0.5": 0.0,
+      "f1_at_0.5": 0.0,
+      "roc_auc": NaN,
+      "pr_auc": 0.0,
+      "brier": 0.00747409027335969
+    },
+    "y_hydro|logistic_regression": {
+      "n": 139080,
+      "positives": 3152,
+      "accuracy_at_0.5": 0.9023295944779983,
+      "precision_at_0.5": 0.18210628961482203,
+      "recall_at_0.5": 0.9479695431472082,
+      "f1_at_0.5": 0.30552147239263805,
+      "roc_auc": 0.9722941685666224,
+      "pr_auc": 0.4557981925424342,
+      "brier": 0.07504062599083822
+    },
+    "y_hydro|hist_gradient_boosting": {
+      "n": 139080,
+      "positives": 3152,
+      "accuracy_at_0.5": 0.9590595340811044,
+      "precision_at_0.5": 0.34983459357277885,
+      "recall_at_0.5": 0.9394035532994924,
+      "f1_at_0.5": 0.5098140495867769,
+      "roc_auc": 0.9897521690622565,
+      "pr_auc": 0.725168530708572,
+      "brier": 0.030684495124414592
+    }
+  },
+  "test_metrics": {
+    "n": 138700,
+    "positives": 1915,
+    "accuracy_at_0.5": 0.9897404470079307,
+    "precision_at_0.5": 0.625,
+    "recall_at_0.5": 0.6422976501305483,
+    "f1_at_0.5": 0.6335307751738347,
+    "roc_auc": 0.9863258772342982,
+    "pr_auc": 0.6079391430334107,
+    "brier": 0.00778897638983357,
+    "confusion_at_high_threshold": {
+      "threshold": 0.1846,
+      "tn": 134307,
+      "fp": 2478,
+      "fn": 333,
+      "tp": 1582
+    },
+    "confusion_at_critical_threshold": {
+      "threshold": 0.8571,
+      "tn": 136751,
+      "fp": 34,
+      "fn": 1738,
+      "tp": 177
+    }
+  },
+  "thresholds": {
+    "moderate": 0.0493,
+    "high": 0.1846,
+    "critical": 0.8571,
+    "method": {
+      "moderate": "min p with >=2x lift over validation prevalence",
+      "high": "validation threshold maximizing F2 (beta=2)",
+      "critical": "min validation p with precision>=0.5, else max-precision with recall>=0.25"
+    },
+    "validation_prevalence": 0.022663
+  },
+  "periods": {
+    "train": "2020-09-01..2023-08-31",
+    "validation": "2023-09-01..2024-08-31",
+    "test": "2024-09-01..2025-08-31"
+  },
+  "features": [
+    "rain_1d",
+    "rain_2d",
+    "rain_3d",
+    "rain_5d",
+    "rain_7d",
+    "rainfall_change",
+    "rainfall_acceleration",
+    "recent_vs_previous",
+    "api_7",
+    "rain_hours_3d",
+    "soil_moisture",
+    "soil_saturation",
+    "soil_moisture_change",
+    "discharge",
+    "discharge_ratio_mean",
+    "discharge_ratio_median",
+    "elevation_m",
+    "slope_deg",
+    "month",
+    "hist_flood_freq_365d",
+    "flood_reports_90d",
+    "exceedance_30d",
+    "exceedance_90d",
+    "days_since_last_exceedance"
+  ],
+  "class_handling": "class/sample weights; isotonic calibration on validation",
+  "random_seed": 42,
+  "n_rows": 693880,
+  "positives": 43,
+  "positives_hydro": 11492
+}

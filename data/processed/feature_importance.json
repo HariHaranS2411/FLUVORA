@@ -1,0 +1,98 @@
+[
+  {
+    "feature": "days_since_last_exceedance",
+    "importance": 0.479494
+  },
+  {
+    "feature": "discharge_ratio_mean",
+    "importance": 0.147399
+  },
+  {
+    "feature": "month",
+    "importance": 0.041466
+  },
+  {
+    "feature": "discharge",
+    "importance": 0.024559
+  },
+  {
+    "feature": "rain_3d",
+    "importance": 0.010957
+  },
+  {
+    "feature": "rain_2d",
+    "importance": 0.010819
+  },
+  {
+    "feature": "soil_moisture",
+    "importance": 0.008851
+  },
+  {
+    "feature": "rain_7d",
+    "importance": 0.007705
+  },
+  {
+    "feature": "rain_hours_3d",
+    "importance": 0.007083
+  },
+  {
+    "feature": "discharge_ratio_median",
+    "importance": 0.006085
+  },
+  {
+    "feature": "rain_5d",
+    "importance": 0.005533
+  },
+  {
+    "feature": "elevation_m",
+    "importance": 0.004835
+  },
+  {
+    "feature": "rain_1d",
+    "importance": -0.003515
+  },
+  {
+    "feature": "soil_saturation",
+    "importance": 0.003131
+  },
+  {
+    "feature": "slope_deg",
+    "importance": -0.002743
+  },
+  {
+    "feature": "rainfall_acceleration",
+    "importance": 0.002199
+  },
+  {
+    "feature": "hist_flood_freq_365d",
+    "importance": 0.002175
+  },
+  {
+    "feature": "exceedance_90d",
+    "importance": -0.001427
+  },
+  {
+    "feature": "recent_vs_previous",
+    "importance": 0.00111
+  },
+  {
+    "feature": "rainfall_change",
+    "importance": -0.000993
+  },
+  {
+    "feature": "exceedance_30d",
+    "importance": -0.000564
+  },
+  {
+    "feature": "soil_moisture_change",
+    "importance": 0.000385
+  },
+  {
+    "feature": "api_7",
+    "importance": -0.000365
+  },
+  {
+    "feature": "flood_reports_90d",
+    "importance": 0.0
+  }
+]

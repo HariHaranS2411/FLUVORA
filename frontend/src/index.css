@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+/* Dark theme palette (deep navy, like the reference dashboard).
+   Named colors so utilities stay readable: night-* for surfaces/text. */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-night-50: #f1f5fd;   /* brightest text (headings) */
+  --color-night-100: #e4ebf7;  /* body text */
+  --color-night-200: #c9d4e8;  /* body text, softer */
+  --color-night-300: #a9b8d4;  /* muted text */
+  --color-night-400: #8395b8;  /* faint text */
+  --color-night-500: #5f7195;  /* faintest text / subtle borders */
+  --color-night-600: #1c2a45;  /* default borders */
+  --color-night-700: #16223a;  /* elevated surfaces, table headers, hovers */
+  --color-night-800: #111a2e;  /* cards */
+  --color-night-900: #0a1120;  /* page background */
+  --color-night-950: #060b15;  /* header / deepest */
+
+  --color-panel-sky: #0e1c33;    /* accent panel background */
+  --color-panel-amber: #251c07;  /* warning panel background */
+  --color-panel-red: #2a1417;    /* danger panel background */
+}
+
+@layer base {
+  /* v3-style default border color, tuned dark */
+  * {
+    border-color: var(--color-night-600);
+  }
+  html {
+    background: var(--color-night-900);
+    color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Slim dark scrollbars */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-night-900);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-night-600);
+    border-radius: 6px;
+    border: 2px solid var(--color-night-900);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-night-500);
+  }
+  /* Consistent focus glow on interactive elements */
+  :focus-visible {
+    outline: 2px solid #38bdf8;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  ::selection {
+    background: rgba(56, 189, 248, 0.35);
+  }
+}
+
+.leaflet-container {
+  font-family: inherit;
+  background: var(--color-night-900);
+}
+
+/* Dark map tiles without changing the (real) tile provider */
+.leaflet-tile-pane {
+  filter: brightness(0.85) invert(1) contrast(2.1) hue-rotate(185deg)
+    saturate(0.55) brightness(0.92);
+}
+.leaflet-control-attribution {
+  background: rgba(10, 17, 32, 0.85) !important;
+  color: var(--color-night-400) !important;
+}
+.leaflet-control-attribution a {
+  color: #7cb5f5 !important;
+}
+.leaflet-bar a {
+  background: var(--color-night-800) !important;
+  color: var(--color-night-100) !important;
+  border-color: var(--color-night-500) !important;
+}
+.leaflet-bar a:hover {
+  background: var(--color-night-700) !important;
+}
+
+/* Recharts tooltips on dark */
+.recharts-default-tooltip {
+  background-color: var(--color-night-800) !important;
+  border: 1px solid var(--color-night-500) !important;
+  border-radius: 8px !important;
+}
+.recharts-tooltip-label {
+  fill: var(--color-night-100);
+}
+.recharts-tooltip-item {
+  color: var(--color-night-200) !important;
+}
+
+/* ---------- chart entrance animations ---------- */
+@keyframes chart-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.chart-rise {
+  animation: chart-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.chart-rise.d1 { animation-delay: 0.05s }
+.chart-rise.d2 { animation-delay: 0.15s }
+.chart-rise.d3 { animation-delay: 0.25s }
+
+/* ---------- state-name labels on the state risk map ---------- */
+.state-label-icon {
+  background: transparent;
+  border: 0;
+}
+.state-label-icon span {
+  display: inline-block;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #f8fafc;
+  text-shadow:
+    0 0 3px rgba(2, 6, 23, 0.95),
+    0 0 6px rgba(2, 6, 23, 0.85),
+    0 1px 2px rgba(2, 6, 23, 0.9);
+  pointer-events: none;
+  user-select: none;
+}

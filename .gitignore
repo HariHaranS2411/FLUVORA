@@ -1,0 +1,39 @@
+# environment / secrets
+.env
+
+# Freebuff/agent workspace scaffolding (thread logs, run docs)
+.freebuff/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# node
+dist/
+node_modules/
+*.tsbuildinfo
+
+# large raw data (re-downloadable from documented sources)
+data/raw/*.geojson
+data/processed/*.pkl
+data/processed/*.geojson
+data/app.db
+data/app.db-shm
+data/app.db-wal
+
+# model artifacts are reproducible from the pipeline
+ml/models/model.joblib
+
+# logs & runtime scratch (regenerated on every run)
+*.log
+*.log.err
+data/*.log
+
+# ad-hoc debug/test dumps
+data/risk_check.json
+data/cycle_test.log
+
+# OS
+.DS_Store
+Thumbs.db

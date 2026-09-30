@@ -1,0 +1,39 @@
+{
+  "features": [
+    "rain_1d",
+    "rain_2d",
+    "rain_3d",
+    "rain_5d",
+    "rain_7d",
+    "rainfall_change",
+    "rainfall_acceleration",
+    "recent_vs_previous",
+    "api_7",
+    "rain_hours_3d",
+    "soil_moisture",
+    "soil_saturation",
+    "soil_moisture_change",
+    "discharge",
+    "discharge_ratio_mean",
+    "discharge_ratio_median",
+    "elevation_m",
+    "slope_deg",
+    "month",
+    "hist_flood_freq_365d",
+    "flood_reports_90d",
+    "exceedance_30d",
+    "exceedance_90d",
+    "days_since_last_exceedance"
+  ],
+  "splits": {
+    "train_end": "2023-08-31",
+    "val_end": "2024-08-31",
+    "test_end": "2025-08-31"
+  },
+  "label_definition": "GDACS flood report day for district within [t, t+3]",
+  "label_definition_hydro": "GloFAS discharge >= causal 5y rolling P99 for district",
+  "n_districts": 735,
+  "n_rows": 693880,
+  "positives": 43,
+  "positives_hydro": 11492
+}

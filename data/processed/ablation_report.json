@@ -1,0 +1,182 @@
+{
+  "question": "Does the gradient-boosting model add predictive value beyond simple hydrological persistence of discharge?",
+  "target": "y_hydro",
+  "target_definition": "GloFAS discharge >= causal 5y rolling P99 for district",
+  "protocol": "time-based splits (train 2020-09..2023-08, val 2023-09..2024-08, test 2024-09..2025-08), HistGradientBoosting, class weighting, isotonic calibration on validation, metrics on untouched test split",
+  "models": {
+    "A_discharge_only": {
+      "features": [
+        "discharge",
+        "discharge_ratio_mean",
+        "discharge_ratio_median",
+        "elevation_m",
+        "slope_deg",
+        "month"
+      ],
+      "validation": {
+        "n": 139080,
+        "positives": 3152,
+        "roc_auc": 0.9711,
+        "pr_auc": 0.4914,
+        "brier": 0.01494
+      },
+      "test": {
+        "n": 138700,
+        "positives": 1915,
+        "roc_auc": 0.9597,
+        "pr_auc": 0.3017,
+        "brier": 0.012705
+      }
+    },
+    "B_rain_soil_only": {
+      "features": [
+        "rain_1d",
+        "rain_2d",
+        "rain_3d",
+        "rain_5d",
+        "rain_7d",
+        "rainfall_change",
+        "rainfall_acceleration",
+        "recent_vs_previous",
+        "api_7",
+        "rain_hours_3d",
+        "soil_moisture",
+        "soil_saturation",
+        "soil_moisture_change",
+        "elevation_m",
+        "slope_deg",
+        "month"
+      ],
+      "validation": {
+        "n": 139080,
+        "positives": 3152,
+        "roc_auc": 0.946,
+        "pr_auc": 0.2984,
+        "brier": 0.018029
+      },
+      "test": {
+        "n": 138700,
+        "positives": 1915,
+        "roc_auc": 0.9343,
+        "pr_auc": 0.1812,
+        "brier": 0.01233
+      }
+    },
+    "C_rain_soil_discharge": {
+      "features": [
+        "rain_1d",
+        "rain_2d",
+        "rain_3d",
+        "rain_5d",
+        "rain_7d",
+        "rainfall_change",
+        "rainfall_acceleration",
+        "recent_vs_previous",
+        "api_7",
+        "rain_hours_3d",
+        "soil_moisture",
+        "soil_saturation",
+        "soil_moisture_change",
+        "discharge",
+        "discharge_ratio_mean",
+        "discharge_ratio_median",
+        "elevation_m",
+        "slope_deg",
+        "month"
+      ],
+      "validation": {
+        "n": 139080,
+        "positives": 3152,
+        "roc_auc": 0.9758,
+        "pr_auc": 0.5247,
+        "brier": 0.014358
+      },
+      "test": {
+        "n": 138700,
+        "positives": 1915,
+        "roc_auc": 0.9663,
+        "pr_auc": 0.3535,
+        "brier": 0.011644
+      }
+    },
+    "D_full": {
+      "features": [
+        "rain_1d",
+        "rain_2d",
+        "rain_3d",
+        "rain_5d",
+        "rain_7d",
+        "rainfall_change",
+        "rainfall_acceleration",
+        "recent_vs_previous",
+        "api_7",
+        "rain_hours_3d",
+        "soil_moisture",
+        "soil_saturation",
+        "soil_moisture_change",
+        "discharge",
+        "discharge_ratio_mean",
+        "discharge_ratio_median",
+        "elevation_m",
+        "slope_deg",
+        "month",
+        "hist_flood_freq_365d",
+        "flood_reports_90d",
+        "exceedance_30d",
+        "exceedance_90d",
+        "days_since_last_exceedance"
+      ],
+      "validation": {
+        "n": 139080,
+        "positives": 3152,
+        "roc_auc": 0.99,
+        "pr_auc": 0.7168,
+        "brier": 0.009998
+      },
+      "test": {
+        "n": 138700,
+        "positives": 1915,
+        "roc_auc": 0.9863,
+        "pr_auc": 0.6079,
+        "brier": 0.007789
+      }
+    },
+    "persistence_baseline_yesterday_state": {
+      "features": [
+        "y_hydro(t-1)"
+      ],
+      "validation": {
+        "n": 139080,
+        "positives": 3152,
+        "roc_auc": 0.8323,
+        "pr_auc": 0.4626,
+        "brier": 0.014689,
+        "rule_precision": 0.6773,
+        "rule_recall": 0.672
+      },
+      "test": {
+        "n": 138700,
+        "positives": 1915,
+        "roc_auc": 0.8109,
+        "pr_auc": 0.397,
+        "brier": 0.010346,
+        "rule_precision": 0.6249,
+        "rule_recall": 0.6272
+      },
+      "note": "no ML: predicts the district stays in high-flow state; pure discharge persistence"
+    }
+  },
+  "interpretation": {
+    "full_vs_discharge_only_pr_auc_test": [
+      0.6079,
+      0.3017
+    ],
+    "full_vs_rain_soil_only_pr_auc_test": [
+      0.6079,
+      0.1812
+    ],
+    "persistence_rule_recall_test": 0.6272,
+    "finding": "Discharge persistence alone (model A) is a strong predictor of tomorrow's high-flow state. Compare A vs D on PR-AUC: the gap is the model's value beyond persistence. Rain+soil without discharge (model B) shows whether rainfall carries independent signal. These numbers are computed, not assumed.",
+    "caution": "Even where D > A, part of the model's skill is hydrological persistence, not genuine flood anticipation. The UI therefore labels the output as 'high-flow / hydrological threshold exceedance' estimates, never as confirmed flood probabilities."
+  }
+}
