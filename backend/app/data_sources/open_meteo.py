@@ -11,9 +11,11 @@ import httpx
 from ..config import settings
 
 ARCHIVE_DAILY_VARS = [
+    # NB: soil_moisture_3_to_9cm_mean was dropped from the API's daily enum
+    # (verified 2026-10-04: any request containing it returns 400). Nothing
+    # downstream ever read it — features use the 0-7cm layer only.
     "precipitation_sum",
     "soil_moisture_0_to_7cm_mean",
-    "soil_moisture_3_to_9cm_mean",
     "et0_fao_evapotranspiration",
     "precipitation_hours",
     "wind_speed_10m_max",
@@ -77,6 +79,7 @@ async def fetch_archive_daily(
 ) -> list[dict]:
     """Daily ERA5 history per coordinate. Returns list aligned with input order."""
     out: list[dict] = []
+    deadline = asyncio.get_running_loop().time() + 150
     async with httpx.AsyncClient(timeout=settings.http_timeout) as client:
         for chunk in _chunks(coords):
             params = {
@@ -87,7 +90,8 @@ async def fetch_archive_daily(
                 "daily": ",".join(ARCHIVE_DAILY_VARS),
                 "timezone": "Asia/Kolkata",
             }
-            data = await _get_json(client, settings.open_meteo_archive_url, params)
+            data = await _get_json_retry(
+                client, settings.open_meteo_archive_url, params, deadline, "archive")
             if isinstance(data, dict):
                 data = [data]
             out.extend(data)

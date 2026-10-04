@@ -689,11 +689,39 @@ def store_discharge_currents(db: Session, districts: list[District], entries: li
     _insert_observations(db, rows)
 
 
+def store_archive_fallback(db: Session, districts: list[District], entries: list[dict]) -> None:
+    """Rain/soil rows from the ERA5 archive for districts whose forecast chunk
+    was throttled this cycle. The archive endpoint lives on a separate quota
+    that stays reachable when api.open-meteo.com rate-limits a shared egress
+    IP, and it serves days up to today — so features keep real inputs instead
+    of going NaN. Same source label and day-keying as the historical backfill."""
+    now = datetime.utcnow()
+    rows: list[dict] = []
+    unit_map = {"rain_mm": "mm", "soil_moisture_0_7cm": "m3/m3"}
+    for d, entry in zip(districts, entries):
+        if not entry:
+            continue
+        daily = entry.get("daily") or {}
+        times = daily.get("time") or []
+        rains = daily.get("precipitation_sum") or []
+        soils = daily.get("soil_moisture_0_to_7cm_mean") or []
+        for t, r, s in zip(times, rains, soils):
+            ts = datetime.combine(datetime.fromisoformat(t).date(), datetime.min.time())
+            for var, v in (("rain_mm", r), ("soil_moisture_0_7cm", s)):
+                if v is None:
+                    continue
+                rows.append({
+                    "district_id": d.id, "source": "open-meteo-era5", "variable": var,
+                    "observed_at": ts, "fetched_at": now, "value": float(v),
+                    "unit": unit_map[var], "quality": "ok"})
+    _insert_observations(db, rows)
+
+
 async def refresh_all_risk(db: Session) -> int:
     """Fetch latest real data for all districts, store, then score each district."""
     from datetime import date as _date
 
-    from ..data_sources.open_meteo import fetch_current, fetch_river_discharge
+    from ..data_sources.open_meteo import fetch_archive_daily, fetch_current, fetch_river_discharge
 
     districts = db.query(District).all()
     coords = [(d.lat, d.lon) for d in districts]
@@ -702,6 +730,19 @@ async def refresh_all_risk(db: Session) -> int:
     store_currents(db, districts, currents)
 
     today = _date.today()
+    # Forecast chunks that stayed throttled even after retries: refill those
+    # districts' rain/soil from the ERA5 archive (days up to today) so the
+    # scoring below has real inputs rather than NaN critical features.
+    missed = [(d, c) for d, c, cur in zip(districts, coords, currents) if not cur]
+    if missed:
+        try:
+            entries = await fetch_archive_daily(
+                [c for _, c in missed], start=today - timedelta(days=9), end=today)
+            store_archive_fallback(db, [d for d, _ in missed], entries)
+            print(f"archive fallback: rain/soil refilled for {len(missed)} throttled districts")
+        except Exception as e:  # noqa: BLE001
+            print(f"archive fallback failed this cycle: {e}")
+
     try:
         discharge = await fetch_river_discharge(
             coords, start=today - timedelta(days=2), end=today + timedelta(days=1))
