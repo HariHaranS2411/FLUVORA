@@ -45,10 +45,13 @@ OUT_PATH = BASE_DIR / "data" / "processed" / "observations_snapshot.npz"
 VARS = ["rain_mm", "soil_moisture_0_7cm", "river_discharge"]
 # Depth caps sized for Render free's 512 MB ephemeral disk (SQLite needs
 # ~300 B per observation row incl. indexes; keep the seeded copy well under
-# half of it). 730d of discharge covers the causal 365d P99 + flood-history;
-# 90d of rain/soil covers every feature window with a wide bookmark margin.
+# half of it). 730d of discharge covers the causal 365d P99 + flood-history.
+# Rain/soil: the live features read only the last 10 days, and the local
+# archive holds all-735-district rain/soil only for the recent forecast era
+# (older rain/soil exists for a 380-district subset) — 30d captures every
+# all-district day with margin while staying tiny.
 DISCHARGE_DAYS = 730
-RAIN_SOIL_DAYS = 90
+RAIN_SOIL_DAYS = 30
 
 
 def main() -> None:
