@@ -30,11 +30,10 @@ services:
   - type: web
     name: fluvora-api
     runtime: python
-    rootDir: backend
     plan: free
     region: singapore          # closest region to India; frontend is a global CDN
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
