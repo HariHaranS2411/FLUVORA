@@ -14,11 +14,24 @@ export type { FloodHistory, LocateResult } from '../types'
 export const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 const BASE = `${API_BASE}/api`
+const RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000, 24_000]
 
 async function get<T>(path: string): Promise<T> {
-  const r = await fetch(`${BASE}${path}`)
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`)
-  return r.json() as Promise<T>
+  for (let attempt = 0; ; attempt++) {
+    let r: Response
+    try {
+      r = await fetch(`${BASE}${path}`)
+    } catch (error) {
+      if (!(error instanceof TypeError) || attempt >= RETRY_DELAYS_MS.length) throw error
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]))
+      continue
+    }
+
+    if (r.ok) return r.json() as Promise<T>
+    const error = new Error(`${r.status} ${await r.text()}`)
+    if (![502, 503, 504].includes(r.status) || attempt >= RETRY_DELAYS_MS.length) throw error
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]))
+  }
 }
 
 export const api = {
