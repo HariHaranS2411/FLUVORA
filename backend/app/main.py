@@ -124,8 +124,28 @@ async def lifespan(app: FastAPI):
             print(f"[startup] auto-seed failed (non-fatal): {e}")
             return
         try:
-            await refresh_job()
-            print("[startup] bootstrap refresh complete")
+            # The first cycle can come back empty when the upstream forecast
+            # API throttles a fresh IP (429): a couple of quick retries here
+            # keep first visitors from waiting 30 minutes for real numbers.
+            for attempt in range(1, 4):
+                if attempt > 1:
+                    await asyncio.sleep(60)
+                    await refresh_job()
+                db = SessionLocal()
+                try:
+                    usable = (db.query(func.count(RiskAssessment.id))
+                              .filter(RiskAssessment.probability.isnot(None))
+                              .scalar() or 0)
+                    total = db.query(func.count(District.id)).scalar() or 0
+                finally:
+                    db.close()
+                if total and usable * 10 >= total:
+                    print(f"[startup] bootstrap refresh complete ({usable}/{total} districts with real risk)")
+                    break
+                if attempt < 3:
+                    print(f"[startup] only {usable}/{total} districts scored after cycle {attempt}; retrying")
+            else:
+                print("[startup] bootstrap finished with few usable districts; scheduler keeps retrying")
         except Exception as e:  # noqa: BLE001
             print(f"[startup] bootstrap refresh failed (non-fatal): {e}")
 
@@ -943,9 +963,12 @@ def data_sources(db: Session = Depends(get_db)):
 
 
 def check_all_sync(db: Session):
+    """Run the async source check from a sync endpoint. The endpoint executes
+    in a threadpool thread with no event loop (asyncio.get_event_loop() raises
+    on Python 3.12+ there), so give it a fresh one explicitly."""
     import asyncio
     from .services.source_status import check_all
-    return asyncio.get_event_loop().run_until_complete(check_all(db))
+    return asyncio.run(check_all(db))
 
 
 @app.post("/api/data-sources/check")

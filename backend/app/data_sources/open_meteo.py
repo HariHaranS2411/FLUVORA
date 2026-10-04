@@ -36,6 +36,36 @@ async def _get_json(client: httpx.AsyncClient, url: str, params: dict) -> dict |
     return data
 
 
+async def _get_json_retry(client: httpx.AsyncClient, url: str, params: dict,
+                           deadline: float, what: str) -> dict | list:
+    """_get_json with bounded backoff on throttle/transient errors (429/5xx),
+    honouring Retry-After and a per-cycle time budget. Shared egress IPs (e.g.
+    Render's) see a lot of aggregate traffic and get throttled in bursts; a few
+    spaced retries turn a whole failed cycle into a slow-but-complete one.
+    Raises once retries are exhausted or the budget is spent."""
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            return await _get_json(client, url, params)
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code
+            ra = e.response.headers.get("Retry-After", "")
+            wait = min(int(ra) if ra.isdigit() else 15 * attempt, 60)
+            retryable = code in (429, 500, 502, 503, 504)
+            if (not retryable or attempt >= 3 or
+                    asyncio.get_running_loop().time() + wait > deadline):
+                raise
+            print(f"  {what} throttled (HTTP {code}), retry {attempt}/3 in {wait}s")
+            await asyncio.sleep(wait)
+        except httpx.HTTPError as e:
+            if (attempt >= 3 or
+                    asyncio.get_running_loop().time() + 15 * attempt > deadline):
+                raise
+            print(f"  {what} failed ({type(e).__name__}: {e}), retry {attempt}/3 in 15s")
+            await asyncio.sleep(15 * attempt)
+
+
 def _chunks(coords: list[tuple[float, float]]):
     step = max(1, settings.fetch_batch_size)
     for i in range(0, len(coords), step):
@@ -67,9 +97,12 @@ async def fetch_archive_daily(
 
 async def fetch_current(coords: list[tuple[float, float]]) -> list[dict]:
     """Current conditions per coordinate (real 'current' block with timestamp).
-    Rate-limited chunks are skipped (returned as {}) so a refresh cycle still
-    covers the districts it can; the scheduler retries on the next cycle."""
+    Throttled chunks are retried with backoff within a bounded time budget;
+    whatever still fails is skipped (returned as {}) so a refresh cycle covers
+    the districts it can — the scheduler retries the rest on the next cycle.
+    Returns a list aligned with `coords`."""
     out: list[dict] = []
+    deadline = asyncio.get_running_loop().time() + 150
     async with httpx.AsyncClient(timeout=settings.http_timeout) as client:
         for chunk in _chunks(coords):
             params = {
@@ -82,9 +115,9 @@ async def fetch_current(coords: list[tuple[float, float]]) -> list[dict]:
                 "timezone": "Asia/Kolkata",
             }
             try:
-                data = await _get_json(client, settings.open_meteo_forecast_url, params)
+                data = await _get_json_retry(
+                    client, settings.open_meteo_forecast_url, params, deadline, "forecast")
             except httpx.HTTPStatusError as e:
-                # 429/5xx/etc: skip this chunk this cycle; scheduler retries later
                 out.extend([{} for _ in chunk])
                 print(f"  forecast chunk skipped (HTTP {e.response.status_code})")
                 await asyncio.sleep(settings.fetch_pause_seconds)
@@ -104,8 +137,12 @@ async def fetch_current(coords: list[tuple[float, float]]) -> list[dict]:
 async def fetch_river_discharge(
     coords: list[tuple[float, float]], start: date, end: date
 ) -> list[dict]:
-    """GloFAS v4 daily river discharge (m3/s) from the Flood API."""
+    """GloFAS v4 daily river discharge (m3/s) from the Flood API.
+    Throttled chunks are retried then skipped as {} (list stays aligned with
+    `coords`); an upstream failure must not abort the whole cycle — stale
+    discharge rows in the DB keep scoring alive until the next cycle."""
     out: list[dict] = []
+    deadline = asyncio.get_running_loop().time() + 150
     async with httpx.AsyncClient(timeout=settings.http_timeout) as client:
         for chunk in _chunks(coords):
             params = {
@@ -115,7 +152,14 @@ async def fetch_river_discharge(
                 "start_date": start.isoformat(),
                 "end_date": end.isoformat(),
             }
-            data = await _get_json(client, settings.open_meteo_flood_url, params)
+            try:
+                data = await _get_json_retry(
+                    client, settings.open_meteo_flood_url, params, deadline, "discharge")
+            except httpx.HTTPError as e:
+                out.extend([{} for _ in chunk])
+                print(f"  discharge chunk skipped ({type(e).__name__})")
+                await asyncio.sleep(settings.fetch_pause_seconds)
+                continue
             if isinstance(data, dict):
                 data = [data]
             out.extend(data)

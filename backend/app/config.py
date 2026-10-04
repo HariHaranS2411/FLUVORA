@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # Fetch tuning
     http_timeout: float = 30.0
-    fetch_batch_size: int = 20          # districts per Open-Meteo batch call
+    fetch_batch_size: int = 100         # districts per Open-Meteo batch call (verified live: 100 coords → 200 OK)
     fetch_pause_seconds: float = 1.0
 
     # Ingestion window
