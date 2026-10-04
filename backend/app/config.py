@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     # Database: SQLite locally; set DATABASE_URL to a PostGIS URL in production.
     database_url: str = f"sqlite:///{BASE_DIR / 'data' / 'app.db'}"
 
+    # Comma-separated CORS origins. Localhost Vite dev defaults; set CORS_ORIGINS
+    # in production to the deployed frontend URL(s), e.g. on Render.
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     # --- Optional credentials (sources that require registration) ---
     nasa_power_api_key: str = ""        # https://power.larc.nasa.gov/ (free, higher limits)
     reliefweb_appname: str = ""         # https://apidoc.reliefweb.int (request appname)

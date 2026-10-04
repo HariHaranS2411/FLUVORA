@@ -6,6 +6,7 @@
  * its storage on the server — is an implementation detail and is never
  * described as a "subscription" in the UI.
  */
+import { API_BASE } from './api'
 
 const SW_PATH = '/service-worker.js'
 
@@ -28,7 +29,7 @@ function urlB64ToUint8Array(b64: string): Uint8Array<ArrayBuffer> {
 }
 
 async function backendPublicKey(): Promise<string> {
-  const r = await fetch('/api/notify/public-key')
+  const r = await fetch(`${API_BASE}/api/notify/public-key`)
   if (!r.ok) throw new Error('Notifications are not configured on this server yet.')
   const j = await r.json()
   return j.publicKey as string
@@ -62,7 +63,7 @@ export async function enableNotifications(districtId?: number): Promise<
       })
     }
     const j = sub.toJSON()
-    const r = await fetch('/api/notify/register', {
+    const r = await fetch(`${API_BASE}/api/notify/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ endpoint: sub.endpoint, keys: j.keys, district_id: districtId ?? null }),
@@ -79,7 +80,7 @@ export async function enableNotifications(districtId?: number): Promise<
 
 /** Trigger a controlled test notification through the real delivery path. */
 export async function sendTestNotification(): Promise<{ sent: number; used: string }> {
-  const r = await fetch('/api/notify/test', { method: 'POST' })
+  const r = await fetch(`${API_BASE}/api/notify/test`, { method: 'POST' })
   if (!r.ok) throw new Error(`Test failed (${r.status})`)
   return r.json()
 }
@@ -91,7 +92,7 @@ export async function syncPermissionState(): Promise<void> {
     const reg = await navigator.serviceWorker.getRegistration()
     const sub = await reg?.pushManager.getSubscription()
     if (sub) {
-      await fetch('/api/notify/unregister', {
+      await fetch(`${API_BASE}/api/notify/unregister`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endpoint: sub.endpoint }),

@@ -1,12 +1,16 @@
 """Backfill the DB's observations table from the REAL ingested history pickles
 (ERA5 daily + GloFAS discharge) and attach real elevation/slope to districts.
-Run once after ingest_history; idempotent (merge on unique key)."""
+Idempotent: rows merge on the unique key, and once historical rows exist the
+pass exits early (keeps repeated runs — e.g. Render pre-deploys — fast).
+Run once after ingest_history.
+"""
 from __future__ import annotations
 
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
+from sqlalchemy import func
 
 from ..config import BASE_DIR
 from ..database import SessionLocal, engine
@@ -14,23 +18,13 @@ from ..models import Base, District, Observation
 
 PROCESSED = BASE_DIR / "data" / "processed"
 
+# Districts per insert pass. Building rows for ALL 735 districts at once needs
+# ~2 GB of dicts; chunking keeps peak memory well inside Render's 2 GB plan.
+CHUNK_DISTRICTS = 100
 
-def _df_from_archive(entries: list[dict]) -> pd.DataFrame:
-    var_map = {
-        "precipitation_sum": ("rain_mm", "mm"),
-        "soil_moisture_0_to_7cm_mean": ("soil_moisture_0_7cm", "m3/m3"),
-    }
-    frames = []
-    for idx, entry in enumerate(entries):
-        daily = entry.get("daily") or {}
-        times = daily.get("time") or []
-        if not times:
-            continue
-        df = pd.DataFrame({"date": pd.to_datetime(times).date, "loc_idx": idx})
-        for api_name, (col, _unit) in var_map.items():
-            df[col] = daily.get(api_name) or [None] * len(times)
-        frames.append(df)
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+# A full backfill writes ~8M rows; live cycles write the same source tags but
+# only recent days. Crossing 1M therefore means history is already backfilled.
+BACKFILLED_ROW_THRESHOLD = 1_000_000
 
 
 def _bulk_insert(db, model, rows: list[dict], chunk: int = 20000) -> None:
@@ -66,6 +60,15 @@ def backfill() -> None:
     Base.metadata.create_all(engine)
     db = SessionLocal()
     try:
+        existing = (
+            db.query(func.count(Observation.id))
+            .filter(Observation.source.in_(["open-meteo-era5", "open-meteo-glofas"]))
+            .scalar()
+            or 0
+        )
+        if existing > BACKFILLED_ROW_THRESHOLD:
+            print(f"backfill: historical rows already present ({existing}) — skipping")
+            return
         districts = db.query(District).all()
         by_shape = {d.shape_id: d for d in districts}
         # CRITICAL: ingest pickles are ordered by districts.csv row order (sorted by
@@ -95,43 +98,52 @@ def backfill() -> None:
 
         # ERA5 daily observations (chunked bulk insert; idempotent)
         era5 = pd.read_pickle(PROCESSED / "era5_daily.pkl")
-        daily = _df_from_archive(era5)
         now = datetime.utcnow()
         unit_map = {"rain_mm": "mm", "soil_moisture_0_7cm": "m3/m3"}
-        rows = []
-        for row in daily.itertuples(index=False):
-            did = id_by_idx.get(row.loc_idx)
-            if did is None:
-                continue
-            ts = datetime.combine(row.date, datetime.min.time())
-            for col in ("rain_mm", "soil_moisture_0_7cm"):
-                v = getattr(row, col)
-                if v is None or (isinstance(v, float) and np.isnan(v)):
+        total = 0
+        for start in range(0, len(era5), CHUNK_DISTRICTS):
+            rows = []
+            for idx in range(start, min(start + CHUNK_DISTRICTS, len(era5))):
+                did = id_by_idx.get(idx)
+                if did is None:
                     continue
-                rows.append({
-                    "district_id": did, "source": "open-meteo-era5", "variable": col,
-                    "observed_at": ts, "fetched_at": now, "value": float(v),
-                    "unit": unit_map[col], "quality": "ok"})
-        _bulk_insert(db, Observation, rows)
-        print(f"era5 observations ensured: {len(rows)}")
+                daily_e = era5[idx].get("daily") or {}
+                times = daily_e.get("time") or []
+                rains = daily_e.get("precipitation_sum") or [None] * len(times)
+                soils = daily_e.get("soil_moisture_0_to_7cm_mean") or [None] * len(times)
+                for t, rain, soil in zip(times, rains, soils):
+                    ts = datetime.combine(pd.to_datetime(t).date(), datetime.min.time())
+                    for col, v in (("rain_mm", rain), ("soil_moisture_0_7cm", soil)):
+                        if v is None or (isinstance(v, float) and np.isnan(v)):
+                            continue
+                        rows.append({
+                            "district_id": did, "source": "open-meteo-era5", "variable": col,
+                            "observed_at": ts, "fetched_at": now, "value": float(v),
+                            "unit": unit_map[col], "quality": "ok"})
+            _bulk_insert(db, Observation, rows)
+            total += len(rows)
+        print(f"era5 observations ensured: {total}")
 
         # GloFAS discharge (chunked bulk insert; idempotent)
         glofas = pd.read_pickle(PROCESSED / "glofas_daily.pkl")
-        rows = []
-        for idx, entry in enumerate(glofas):
-            did = id_by_idx.get(idx)
-            if did is None:
-                continue
-            daily_g = entry.get("daily") or {}
-            for t, v in zip(daily_g.get("time") or [], daily_g.get("river_discharge") or []):
-                if v is None:
+        total = 0
+        for start in range(0, len(glofas), CHUNK_DISTRICTS):
+            rows = []
+            for idx in range(start, min(start + CHUNK_DISTRICTS, len(glofas))):
+                did = id_by_idx.get(idx)
+                if did is None:
                     continue
-                rows.append({
-                    "district_id": did, "source": "open-meteo-glofas",
-                    "variable": "river_discharge", "observed_at": datetime.fromisoformat(t),
-                    "fetched_at": now, "value": float(v), "unit": "m3/s", "quality": "ok"})
-        _bulk_insert(db, Observation, rows)
-        print(f"discharge observations ensured: {len(rows)}")
+                daily_g = glofas[idx].get("daily") or {}
+                for t, v in zip(daily_g.get("time") or [], daily_g.get("river_discharge") or []):
+                    if v is None:
+                        continue
+                    rows.append({
+                        "district_id": did, "source": "open-meteo-glofas",
+                        "variable": "river_discharge", "observed_at": datetime.fromisoformat(t),
+                        "fetched_at": now, "value": float(v), "unit": "m3/s", "quality": "ok"})
+            _bulk_insert(db, Observation, rows)
+            total += len(rows)
+        print(f"discharge observations ensured: {total}")
     finally:
         db.close()
 

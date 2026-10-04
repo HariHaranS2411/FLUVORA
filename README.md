@@ -195,6 +195,38 @@ from browser settings — the code never re-prompts after a denial.
 SQLite-compatible for local runs. Scheduled refresh runs inside the backend
 (APScheduler); for serverless platforms replace it with their cron/worker.
 
+### Render (one-click blueprint)
+
+The repo ships a [render.yaml](render.yaml) blueprint defining both services:
+
+- **fluvora-api** — Python web service (`backend/`), uvicorn on `$PORT`, health
+  check `/api/health`, persistent disk at `/var/data` holding the SQLite DB
+  (`DATABASE_URL=sqlite:////var/data/app.db`), `plan: 1c-2g` (disks need a paid
+  plan; 2 GB RAM fits the model + chunked backfill).
+- **fluvora-web** — static site built from `frontend/` (SPA rewrite to
+  `/index.html`).
+
+Every deploy runs a pre-deploy command that seeds districts/flood events/the
+model registry and backfills the 10-year observation history from the pickles
+committed in git — idempotent, so the first deploy does the heavy insert and
+later ones finish in seconds. The 197 MB `dataset.pkl` is intentionally not in
+git (GitHub's 100 MB file limit); only the `/explain` historical-analogue
+section degrades without it — the startup warmup already tolerates its absence.
+
+To deploy: push the repo to GitHub, then in Render "New +" > "Blueprint". The
+initial sync prompts for two values Render cannot auto-fill (its service host
+references resolve to the private network, and `VITE_API_BASE` is baked in at
+build time):
+
+- `CORS_ORIGINS` (backend) — the frontend's public URL, e.g.
+  `https://fluvora-web.onrender.com`
+- `VITE_API_BASE` (frontend) — the backend's public URL including `https://`,
+  e.g. `https://fluvora-api.onrender.com`
+
+Optional env vars (all prompted with empty defaults): `NASA_POWER_API_KEY`,
+`RELIEFWEB_APPNAME`, `DATA_GOV_IN_API_KEY`, and the `VAPID_*` triple for
+browser notifications.
+
 ## Frontend
 
 The UI is a minimalist dark dashboard (Inter, sky accent) built with React +

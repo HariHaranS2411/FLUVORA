@@ -1,0 +1,84 @@
+# FLUVORA — Render Blueprint
+# Deploys both halves of the app:
+#   fluvora-api : FastAPI backend (web service) + persistent disk for SQLite
+#   fluvora-web : React/Vite frontend (static site with SPA rewrites)
+#
+# Deploy: push this repo to GitHub, then in Render "New +" > "Blueprint" and
+# select the repo. During the initial sync Render prompts for every
+# `sync: false` value below — the two that matter:
+#   CORS_ORIGINS  (fluvora-api) -> the frontend's public URL, comma-separated,
+#                                  e.g. https://fluvora-web.onrender.com
+#   VITE_API_BASE (fluvora-web) -> the backend's public URL INCLUDING https://,
+#                                  e.g. https://fluvora-api.onrender.com
+# (Render cannot auto-fill these: service-to-service host references resolve to
+# Render's private network, which a browser can't reach. VITE_API_BASE is baked
+# into the JS bundle at build time, so changing it later triggers a rebuild.)
+
+previews:
+  generation: off
+
+services:
+  # ---------------------------------------------------------------- backend
+  - type: web
+    name: fluvora-api
+    runtime: python
+    rootDir: backend
+    # Persistent disks require a paid plan, and the ML stack (pandas/sklearn +
+    # warm model) wants more than the 512 MB the cheapest paid plan offers.
+    plan: 1c-2g
+    region: singapore          # closest region to India; frontend is a global CDN
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    # Seed districts/flood events/model registry, then backfill the 10-year
+    # observation history from the pickles shipped in git (idempotent; the
+    # backfill skips itself once historical rows exist). First deploy does the
+    # heavy insert; later deploys re-run both in seconds.
+    preDeployCommand: python -m app.seed_db && python -c "from app.services.backfill_db import backfill; backfill()"
+    disk:
+      name: fluvora-data
+      mountPath: /var/data
+      sizeGB: 2                      # observation history (~1 GB) + WAL headroom
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      # Absolute path on the mounted disk (note the 4 slashes = absolute URL).
+      # On an empty disk the app creates the schema itself at startup.
+      - key: DATABASE_URL
+        value: sqlite:////var/data/app.db
+      - key: CORS_ORIGINS
+        sync: false            # frontend public URL(s), comma-separated
+      # Optional upstream credentials (all sources work without them; see
+      # .env.example / DATA_SOURCE_MATRIX.md).
+      - key: NASA_POWER_API_KEY
+        sync: false
+      - key: RELIEFWEB_APPNAME
+        sync: false
+      - key: DATA_GOV_IN_API_KEY
+        sync: false
+      # Web Push for HIGH-risk browser alerts. Generate once with
+      # app/services/webpush.py:generate_vapid_keys; leave empty to disable.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+
+  # --------------------------------------------------------------- frontend
+  - type: web
+    name: fluvora-web
+    runtime: static
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: frontend/dist
+    routes:
+      # SPA fallback: serve index.html for client-side router paths
+      # (existing static files like /assets/* and /service-worker.js win first).
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: VITE_API_BASE
+        sync: false            # backend public URL incl. https://

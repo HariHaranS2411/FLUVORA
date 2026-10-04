@@ -14,16 +14,26 @@ dist/
 node_modules/
 *.tsbuildinfo
 
-# large raw data (re-downloadable from documented sources)
+# data artifacts: everything the deployed app loads at runtime ships in git
+# (trained model, map geometry, ingest history for the cold-disk backfill).
+# Only oversized / unused files stay out of the repo:
 data/raw/*.geojson
+!data/raw/geoBoundaries-IND-ADM1_simplified.geojson
 data/processed/*.pkl
+!data/processed/era5_daily.pkl
+!data/processed/glofas_daily.pkl
+!data/processed/elevation.pkl
+!data/processed/slope.pkl
 data/processed/*.geojson
+!data/processed/districts_simplified.geojson
 data/app.db
 data/app.db-shm
 data/app.db-wal
 
-# model artifacts are reproducible from the pipeline
-ml/models/model.joblib
+# model artifacts are reproducible from the pipeline — except the trained
+# bundle itself, which the deployed backend needs (608 KB, ships in git)
+ml/models/*.joblib
+!ml/models/model.joblib
 
 # logs & runtime scratch (regenerated on every run)
 *.log

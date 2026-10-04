@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
-import { api } from '../services/api'
+import { api, API_BASE } from '../services/api'
 import type { RiskMap } from '../types'
 import { NA } from '../components/Bits'
 
@@ -19,7 +19,7 @@ export default function Home() {
 
   useEffect(() => {
     api.riskMap().then(setRisk).catch((e) => setErr(String(e.message || e)))
-    fetch('/api/data-sources')
+    fetch(`${API_BASE}/api/data-sources`)
       .then((r) => (r.ok ? r.json() : []))
       .then((rows: { key: string; name: string; status: string; last_data_at: string | null }[]) =>
         setSources(rows.filter((s) => !s.name.includes('NASA') && !s.name.includes('ReliefWeb')).slice(0, 6)))

@@ -7,7 +7,13 @@ import type {
 // re-exported here so existing imports keep working (single source of truth).
 export type { FloodHistory, LocateResult } from '../types'
 
-const BASE = '/api'
+// Production (Render): VITE_API_BASE is baked in at build time and points at the
+// backend service, e.g. https://fluvora-api.onrender.com. Unset in dev, where
+// Vite's /api proxy (vite.config.ts) forwards to the local backend. Exported so
+// call sites outside this module (map geojson, notifications) hit the same base.
+export const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+
+const BASE = `${API_BASE}/api`
 
 async function get<T>(path: string): Promise<T> {
   const r = await fetch(`${BASE}${path}`)

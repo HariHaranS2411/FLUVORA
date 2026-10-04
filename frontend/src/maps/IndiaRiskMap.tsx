@@ -5,6 +5,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { RiskMap } from '../types'
 import { RISK_COLORS } from '../types'
+import { API_BASE } from '../services/api'
 
 const INDIA_BOUNDS: [[number, number], [number, number]] = [[6.5, 68], [36.5, 97.5]]
 
@@ -111,7 +112,7 @@ export default function IndiaRiskMap({ riskMap, height = 560, showStates = true,
   useEffect(() => {
     let cancelled = false
     setGeo(null) // clear old geometry immediately so the level switch is visible
-    fetch(`/api/map-data?level=${level}`)
+    fetch(`${API_BASE}/api/map-data?level=${level}`)
       .then(async (r) => {
         if (!r.ok) throw new Error(`map geometry/risk unavailable (${r.status})`)
         const data = await r.json()
@@ -124,7 +125,7 @@ export default function IndiaRiskMap({ riskMap, height = 560, showStates = true,
   // State borders highlight on EVERY map (district mode overlays them on top of
   // districts; state mode keeps them visible even though polygons are states).
   useEffect(() => {
-    fetch('/api/geo/states')
+    fetch(`${API_BASE}/api/geo/states`)
       .then(async (r) => (r.ok ? r.json() : null))
       .then((d) => d && setStateBorders(d))
       .catch(() => {})
