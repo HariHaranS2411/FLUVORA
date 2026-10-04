@@ -19,6 +19,7 @@ from ..config import BASE_DIR
 from ..models import District
 
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
+PHOTON_URL = "https://photon.komoot.io/api/"
 
 _geo_cache: dict = {}
 
@@ -61,6 +62,35 @@ async def geocode_city(name: str) -> list[dict]:
             "lat": float(res["latitude"]),
             "lon": float(res["longitude"]),
             "population": res.get("population"),
+        })
+    return out
+
+
+async def geocode_photon(name: str) -> list[dict]:
+    """Fallback real geocoder for Indian places omitted by Open-Meteo."""
+    async with httpx.AsyncClient(
+        timeout=20.0,
+        headers={"User-Agent": "FLUVORA/1.0 (+https://github.com/HariHaranS2411/FLUVORA)"},
+    ) as client:
+        r = await client.get(PHOTON_URL, params={"q": name, "limit": 10})
+        r.raise_for_status()
+        data = r.json()
+    out = []
+    for feature in data.get("features", []) or []:
+        props = feature.get("properties") or {}
+        if str(props.get("countrycode", "")).upper() != "IN":
+            continue
+        coordinates = (feature.get("geometry") or {}).get("coordinates") or []
+        place_name = props.get("name") or props.get("city") or props.get("county")
+        if len(coordinates) < 2 or not place_name:
+            continue
+        out.append({
+            "name": place_name,
+            "state": props.get("state"),
+            "district_hint": props.get("district") or props.get("county"),
+            "lat": float(coordinates[1]),
+            "lon": float(coordinates[0]),
+            "population": props.get("population"),
         })
     return out
 
@@ -125,6 +155,11 @@ async def locate_city(db: Session, query: str) -> dict:
         matches = await geocode_city(query)
     except httpx.HTTPError:
         matches = []
+    if not matches:
+        try:
+            matches = await geocode_photon(query)
+        except httpx.HTTPError:
+            matches = []
     if not matches:
         d = _match_district_name(db, query)
         if d is None:
