@@ -46,6 +46,8 @@ services:
         value: 3.13.5
       - key: CORS_ORIGINS
         sync: false            # frontend public URL(s), comma-separated
+      - key: OPEN_METEO_API_KEY
+        sync: false            # optional customer key; Archive requires Professional plan
       # Optional upstream credentials (all sources work without them; see
       # .env.example / DATA_SOURCE_MATRIX.md).
       - key: NASA_POWER_API_KEY

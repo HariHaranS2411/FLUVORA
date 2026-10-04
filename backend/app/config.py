@@ -23,6 +23,7 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     # --- Optional credentials (sources that require registration) ---
+    open_meteo_api_key: str = ""       # customer endpoints; Archive access requires Professional
     nasa_power_api_key: str = ""        # https://power.larc.nasa.gov/ (free, higher limits)
     reliefweb_appname: str = ""         # https://apidoc.reliefweb.int (request appname)
     data_gov_in_api_key: str = ""       # https://data.gov.in (per-dataset keys)

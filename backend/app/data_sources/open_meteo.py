@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -28,8 +29,36 @@ FORECAST_HOURLY_VARS = [
 
 CURRENT_VARS = ["precipitation", "rain", "soil_moisture_0_to_7cm"]
 
+_CUSTOMER_HOSTS = {
+    "api.open-meteo.com": "customer-api.open-meteo.com",
+    "archive-api.open-meteo.com": "customer-archive-api.open-meteo.com",
+    "flood-api.open-meteo.com": "customer-flood-api.open-meteo.com",
+}
+_CUSTOMER_HOST_NAMES = set(_CUSTOMER_HOSTS.values())
+
+
+def prepare_open_meteo_request(url: str, params: dict) -> tuple[str, dict]:
+    """Use Open-Meteo's reserved customer endpoint when a key is configured."""
+    api_key = settings.open_meteo_api_key.strip()
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    customer_host = _CUSTOMER_HOSTS.get(host)
+    if not api_key or (customer_host is None and host not in _CUSTOMER_HOST_NAMES):
+        return url, params
+
+    if customer_host is not None:
+        netloc = customer_host
+        if parts.port:
+            netloc += f":{parts.port}"
+        url = urlunsplit(parts._replace(netloc=netloc))
+
+    request_params = dict(params)
+    request_params["apikey"] = api_key
+    return url, request_params
+
 
 async def _get_json(client: httpx.AsyncClient, url: str, params: dict) -> dict | list:
+    url, params = prepare_open_meteo_request(url, params)
     resp = await client.get(url, params=params)
     resp.raise_for_status()
     data = resp.json()
@@ -64,7 +93,7 @@ async def _get_json_retry(client: httpx.AsyncClient, url: str, params: dict,
             if (attempt >= 3 or
                     asyncio.get_running_loop().time() + 15 * attempt > deadline):
                 raise
-            print(f"  {what} failed ({type(e).__name__}: {e}), retry {attempt}/3 in 15s")
+            print(f"  {what} failed ({type(e).__name__}), retry {attempt}/3 in 15s")
             await asyncio.sleep(15 * attempt)
 
 

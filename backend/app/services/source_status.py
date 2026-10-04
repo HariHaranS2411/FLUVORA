@@ -15,6 +15,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from ..data_sources.open_meteo import prepare_open_meteo_request
 from ..models import DataSourceStatus, Observation
 
 SOURCES = [
@@ -69,6 +70,7 @@ def _last_data_at(db: Session, source: str) -> datetime | None:
 
 async def check_all(db: Session) -> list[DataSourceStatus]:
     results: list[DataSourceStatus] = []
+    effective_urls: dict[str, str] = {}
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
         for s in SOURCES:
             key = s["key"]
@@ -119,19 +121,28 @@ async def check_all(db: Session) -> list[DataSourceStatus]:
                 # public endpoints: perform a real minimal query
                 try:
                     if key == "open-meteo-era5":
-                        r = await client.get(s["url"], params={
+                        url, params = prepare_open_meteo_request(s["url"], {
                             "latitude": 13.08, "longitude": 80.27,
                             "start_date": "2024-07-01", "end_date": "2024-07-02",
                             "daily": "precipitation_sum"})
+                        r = await client.get(url, params=params)
+                        effective_urls[key] = url
                     elif key == "open-meteo-forecast":
-                        r = await client.get(s["url"], params={
+                        url, params = prepare_open_meteo_request(s["url"], {
                             "latitude": 13.08, "longitude": 80.27, "current": "precipitation"})
+                        r = await client.get(url, params=params)
+                        effective_urls[key] = url
                     elif key == "open-meteo-glofas":
-                        r = await client.get(s["url"], params={
+                        url, params = prepare_open_meteo_request(s["url"], {
                             "latitude": 25.43, "longitude": 81.83, "daily": "river_discharge",
                             "start_date": "2024-07-01", "end_date": "2024-07-02"})
+                        r = await client.get(url, params=params)
+                        effective_urls[key] = url
                     elif key == "open-meteo-dem":
-                        r = await client.get(s["url"], params={"latitude": 13.08, "longitude": 80.27})
+                        url, params = prepare_open_meteo_request(
+                            s["url"], {"latitude": 13.08, "longitude": 80.27})
+                        r = await client.get(url, params=params)
+                        effective_urls[key] = url
                     elif key == "gdacs":
                         r = await client.get(s["url"], params={
                             "eventtype": "FL", "fromDate": "2026-01-01", "toDate": "2026-12-31"})
@@ -149,7 +160,11 @@ async def check_all(db: Session) -> list[DataSourceStatus]:
                         if key != "gdacs":
                             detail = f"Live probe HTTP {r.status_code}."
                 except Exception as e:  # noqa: BLE001
-                    status, detail = "unreachable", str(e)[:300]
+                    status = "unreachable"
+                    code = getattr(getattr(e, "response", None), "status_code", None)
+                    detail = (f"Open-Meteo probe HTTP {code}." if code and key.startswith("open-meteo-")
+                              else f"Probe failed ({type(e).__name__})." if key.startswith("open-meteo-")
+                              else str(e)[:300])
 
             src_map = {"open-meteo-era5": "open-meteo-era5",
                        "open-meteo-forecast": "open-meteo-forecast",
@@ -157,10 +172,11 @@ async def check_all(db: Session) -> list[DataSourceStatus]:
             row = db.query(DataSourceStatus).filter(DataSourceStatus.key == key).first()
             if row is None:
                 row = DataSourceStatus(key=key, name=s["name"], provider=s["provider"],
-                                       url=s["url"], requires_auth=s["requires_auth"],
+                                       url=effective_urls.get(key, s["url"]), requires_auth=s["requires_auth"],
                                        auth_env_var=s["auth_env_var"])
                 db.add(row)
-            row.name, row.provider, row.url = s["name"], s["provider"], s["url"]
+            row.name, row.provider = s["name"], s["provider"]
+            row.url = effective_urls.get(key, s["url"])
             row.status = status
             row.detail = detail
             row.last_checked_at = datetime.utcnow()

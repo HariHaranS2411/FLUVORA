@@ -741,7 +741,7 @@ async def refresh_all_risk(db: Session) -> int:
             store_archive_fallback(db, [d for d, _ in missed], entries)
             print(f"archive fallback: rain/soil refilled for {len(missed)} throttled districts")
         except Exception as e:  # noqa: BLE001
-            print(f"archive fallback failed this cycle: {e}")
+            print(f"archive fallback failed this cycle ({type(e).__name__})")
 
     try:
         discharge = await fetch_river_discharge(
