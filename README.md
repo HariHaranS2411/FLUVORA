@@ -200,18 +200,21 @@ SQLite-compatible for local runs. Scheduled refresh runs inside the backend
 The repo ships a [render.yaml](render.yaml) blueprint defining both services:
 
 - **fluvora-api** — Python web service (`backend/`), uvicorn on `$PORT`, health
-  check `/api/health`, persistent disk at `/var/data` holding the SQLite DB
-  (`DATABASE_URL=sqlite:////var/data/app.db`), `plan: 1c-2g` (disks need a paid
-  plan; 2 GB RAM fits the model + chunked backfill).
+  check `/api/health`, currently on `plan: free` (**demo mode**: no persistent
+  disk — the SQLite database is ephemeral and resets on every restart/spin-down;
+  the app re-seeds districts/events/model registry and runs an immediate
+  refresh cycle on an empty database, so the live nowcast works but long-term
+  history does not survive restarts. For persistence, add a `disk:` block
+  (paid plan) and set `DATABASE_URL=sqlite:////var/data/app.db`).
 - **fluvora-web** — static site built from `frontend/` (SPA rewrite to
   `/index.html`).
 
-Every deploy runs a pre-deploy command that seeds districts/flood events/the
-model registry and backfills the 10-year observation history from the pickles
-committed in git — idempotent, so the first deploy does the heavy insert and
-later ones finish in seconds. The 197 MB `dataset.pkl` is intentionally not in
-git (GitHub's 100 MB file limit); only the `/explain` historical-analogue
-section degrades without it — the startup warmup already tolerates its absence.
+The 197 MB `dataset.pkl` is intentionally not in git (GitHub's 100 MB file
+limit); only the `/explain` historical-analogue section degrades without it —
+the startup warmup already tolerates its absence. The 10-year observation
+history backfill (`backfill_db.py`) is also not wired into the free tier
+(its memory needs exceed the 512 MB plan); with a paid disk it can be run once
+via the Render shell or a pre-deploy command.
 
 To deploy: push the repo to GitHub, then in Render "New +" > "Blueprint". The
 initial sync prompts for two values Render cannot auto-fill (its service host

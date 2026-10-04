@@ -19,33 +19,26 @@ previews:
 
 services:
   # ---------------------------------------------------------------- backend
+  # FREE-TIER DEMO MODE: no persistent disk, so the SQLite database lives on
+  # the instance's ephemeral filesystem and resets on every restart/spin-down
+  # (free instances sleep after ~15 min idle). The app handles this itself:
+  # at startup it re-seeds districts/events/model registry and runs one
+  # immediate refresh cycle when the database is empty (see main.py lifespan).
+  # Real live nowcast works; long-term history does not survive restarts.
+  # For full persistence: add a `disk:` block (paid plan) and set
+  # DATABASE_URL=sqlite:////var/data/app.db (see README "Render").
   - type: web
     name: fluvora-api
     runtime: python
     rootDir: backend
-    # Persistent disks require a paid plan, and the ML stack (pandas/sklearn +
-    # warm model) wants more than the 512 MB the cheapest paid plan offers.
-    plan: 1c-2g
+    plan: free
     region: singapore          # closest region to India; frontend is a global CDN
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
-    # Seed districts/flood events/model registry, then backfill the 10-year
-    # observation history from the pickles shipped in git (idempotent; the
-    # backfill skips itself once historical rows exist). First deploy does the
-    # heavy insert; later deploys re-run both in seconds.
-    preDeployCommand: python -m app.seed_db && python -c "from app.services.backfill_db import backfill; backfill()"
-    disk:
-      name: fluvora-data
-      mountPath: /var/data
-      sizeGB: 2                      # observation history (~1 GB) + WAL headroom
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.5
-      # Absolute path on the mounted disk (note the 4 slashes = absolute URL).
-      # On an empty disk the app creates the schema itself at startup.
-      - key: DATABASE_URL
-        value: sqlite:////var/data/app.db
       - key: CORS_ORIGINS
         sync: false            # frontend public URL(s), comma-separated
       # Optional upstream credentials (all sources work without them; see

@@ -99,6 +99,37 @@ async def lifespan(app: FastAPI):
 
     asyncio.get_running_loop().create_task(_warm())
     asyncio.get_running_loop().create_task(_warm_map_payloads())
+
+    # First-run / ephemeral-filesystem bootstrap (Render free tier): every
+    # spin-up starts with an empty database, so seed districts, flood events
+    # and the model registry, then run one refresh cycle immediately instead
+    # of waiting 30 minutes for the first scheduled one. No-op whenever data
+    # already exists (normal local dev, paid-tier persistent disk).
+    async def _bootstrap_if_empty():
+        from .database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            has_districts = db.query(District.id).first() is not None
+            has_scores = db.query(RiskAssessment.id).first() is not None
+        finally:
+            db.close()
+        if has_districts and has_scores:
+            return
+        try:
+            if not has_districts:
+                from .seed_db import seed
+                await asyncio.to_thread(seed)
+        except Exception as e:  # noqa: BLE001
+            print(f"[startup] auto-seed failed (non-fatal): {e}")
+            return
+        try:
+            await refresh_job()
+            print("[startup] bootstrap refresh complete")
+        except Exception as e:  # noqa: BLE001
+            print(f"[startup] bootstrap refresh failed (non-fatal): {e}")
+
+    asyncio.get_running_loop().create_task(_bootstrap_if_empty())
     yield
     scheduler.shutdown()
 
