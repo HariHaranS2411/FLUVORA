@@ -46,7 +46,7 @@ async def geocode_city(name: str) -> list[dict]:
     """Real geocoder results for Indian cities (name, state, lat, lon, population)."""
     async with httpx.AsyncClient(timeout=20.0) as client:
         r = await client.get(GEOCODE_URL, params={
-            "name": name, "count": 10, "language": "en", "format": "json",
+            "name": name, "count": 100, "language": "en", "format": "json",
         })
         r.raise_for_status()
         data = r.json()
@@ -101,26 +101,55 @@ def resolve_district(db: Session, lat: float, lon: float,
             "method": "nearest-centroid", "distance_km": round(bd, 1)}
 
 
+def _normalize_place_name(name: str) -> str:
+    parts = name.casefold().replace(",", " ").split()
+    if parts and parts[-1] == "district":
+        parts.pop()
+    return " ".join(parts)
+
+
+def _match_district_name(db: Session, query: str) -> District | None:
+    normalized = _normalize_place_name(query)
+    if not normalized:
+        return None
+    matches = [d for d in db.query(District).all()
+               if _normalize_place_name(d.name) == normalized]
+    return matches[0] if len(matches) == 1 else None
+
+
 async def locate_city(db: Session, query: str) -> dict:
     """Full city -> district -> current risk + explanation locator payload."""
     from .risk_engine import explain_district
 
-    matches = await geocode_city(query)
+    try:
+        matches = await geocode_city(query)
+    except httpx.HTTPError:
+        matches = []
     if not matches:
-        return {"found": False, "query": query,
-                "detail": "No Indian city with this name was found in the geocoder."}
-
-    city = matches[0]
-    loc = resolve_district(db, city["lat"], city["lon"], city.get("district_hint"))
-    d = db.get(District, loc["district_id"])
+        d = _match_district_name(db, query)
+        if d is None:
+            return {"found": False, "query": query,
+                    "detail": "No matching Indian city or district was found."}
+        city_result = {
+            "name": d.name, "state": d.state, "lat": d.lat, "lon": d.lon,
+            "matches": [],
+        }
+        loc = {"district_id": d.id, "name": d.name, "state": d.state,
+               "method": "district-name", "distance_km": 0.0}
+    else:
+        city = matches[0]
+        loc = resolve_district(db, city["lat"], city["lon"], city.get("district_hint"))
+        d = db.get(District, loc["district_id"])
+        city_result = {
+            "name": city["name"], "state": city["state"],
+            "lat": city["lat"], "lon": city["lon"], "matches": matches[:5],
+        }
     explanation = explain_district(db, d)
 
     return {
         "found": True,
         "query": query,
-        "city": {"name": city["name"], "state": city["state"],
-                 "lat": city["lat"], "lon": city["lon"],
-                 "matches": matches[:5]},
+        "city": city_result,
         "district": {"id": d.id, "name": d.name, "state": d.state},
         "resolution": loc,
         "explanation": explanation,
