@@ -34,6 +34,12 @@ services:
     region: singapore          # closest region to India; frontend is a global CDN
     buildCommand: pip install -r backend/requirements.txt
     startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    buildFilter:
+      paths:
+        - backend/**
+        - data/**
+        - database/**
+        - ml/**
     healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
