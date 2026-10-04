@@ -725,7 +725,11 @@ def flood_history(district_id: int, db: Session = Depends(get_db)):
     threshold is a MODELED HIGH-FLOW EPISODE — not automatically a confirmed
     flood. Officially reported events (GDACS) are returned separately so the
     UI can display the two side by side. Yearly + monthly aggregates included.
-    Cached per day: episodes only change when observations do."""
+    Cached per day: episodes only change when observations do. The
+    'insufficient history' response is deliberately NOT cached — it is the
+    transient state of a freshly-booted ephemeral DB while the history
+    snapshot seeds, and pinning it for the rest of the UTC day would keep
+    serving 'none → none' even after the data lands."""
     today = datetime.utcnow().date()
     cached = _flood_history_cache.get(district_id)
     if cached and cached[0] == today:
@@ -756,7 +760,8 @@ def flood_history(district_id: int, db: Session = Depends(get_db)):
             "monthly": [],
             "official_events": [],
         }
-        _flood_history_cache[district_id] = (today, payload)
+        # Do not cache: re-query next time so a request that raced the
+        # bootstrap history seed recovers as soon as the rows exist.
         return payload
 
     vals = pd.Series([daily[x] for x in dates], index=dates, dtype=float)
