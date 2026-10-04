@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # Refresh schedule (seconds)
     refresh_interval_seconds: int = 1800  # 30 min
 
+    # Last-known-good snapshot (data/processed/last_good_risk.json) seeding:
+    # refuse to seed estimates older than this many days — an ancient baseline
+    # must not pose as an early-warning fallback.
+    risk_snapshot_max_age_days: int = 7
+
     # Web Push (browser notifications for HIGH-risk alerts). Keys are generated
     # once (see app/services/webpush.py:generate_vapid_keys) and kept server-side.
     vapid_public_key: str = ""

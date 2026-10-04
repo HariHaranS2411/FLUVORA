@@ -123,6 +123,25 @@ async def lifespan(app: FastAPI):
         except Exception as e:  # noqa: BLE001
             print(f"[startup] auto-seed failed (non-fatal): {e}")
             return
+        # Seed the last-known-good assessments (real model outputs shipped in
+        # git) BEFORE the refresh loop: on a free-tier host whose egress IP is
+        # quota-starved, the first cycles all come back DATA_UNAVAILABLE —
+        # with the snapshot in place the very first usability check passes, so
+        # visitors get the dated last-good estimate instantly instead of
+        # 'no data', and the loop skips its quota-burning retries.
+        try:
+            from .database import SessionLocal as _SL
+            from .services.risk_snapshot import seed_missing_from_snapshot
+            _db = _SL()
+            try:
+                seeded = await asyncio.to_thread(seed_missing_from_snapshot, _db)
+                if seeded:
+                    print(f"[startup] serving last-known-good snapshot ({seeded} rows) "
+                          f"until the next live refresh lands")
+            finally:
+                _db.close()
+        except Exception as e:  # noqa: BLE001
+            print(f"[startup] snapshot seed failed (non-fatal): {e}")
         try:
             # The first cycle can come back empty when the upstream forecast
             # API throttles a fresh IP (429): a couple of quick retries here
@@ -178,8 +197,32 @@ async def refresh_job() -> None:
         n = await asyncio.to_thread(_cycle_sync)
         print(f"[refresh] scored {n} districts")
         await asyncio.to_thread(_prune_old_assessments)
+        # The snapshot cohort carries the oldest computed_at, so a long quota
+        # outage (every cycle writing only DATA_UNAVAILABLE rows) eventually
+        # prunes it out of the 30-run retention window. Top it back up whenever
+        # usable districts have dropped below 10% — the sticky display in
+        # _latest_assessments then keeps serving the dated last-good rows.
+        await asyncio.to_thread(_top_up_snapshot_rows)
     except Exception as e:  # noqa: BLE001
         print(f"[refresh] cycle failed (non-fatal): {e}")
+
+
+def _top_up_snapshot_rows() -> None:
+    """Re-seed snapshot rows when almost no district has a usable assessment
+    (fresh ephemeral DB + starved upstream quota). Cheap no-op when live data
+    is flowing."""
+    from .database import SessionLocal
+    from .services.risk_snapshot import seed_missing_from_snapshot
+
+    db = SessionLocal()
+    try:
+        total = db.query(func.count(District.id)).scalar() or 0
+        usable = (db.query(func.count(func.distinct(RiskAssessment.district_id)))
+                  .filter(RiskAssessment.probability.isnot(None)).scalar() or 0)
+        if total and usable * 10 < total:
+            seed_missing_from_snapshot(db)
+    finally:
+        db.close()
 
 
 def _prune_old_assessments() -> None:
