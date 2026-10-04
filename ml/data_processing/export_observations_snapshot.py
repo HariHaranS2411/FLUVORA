@@ -6,13 +6,17 @@ flood-history pages, latest-data, and the live Check-My-City / explain compute
 all read the OBSERVATIONS table — which stays empty until upstream quota
 allows backfilling, so those surfaces showed "no data" for hours.
 
-This script dumps the full ingested daily record of the three display/model
-variables (rain_mm, soil_moisture_0_7cm, river_discharge — locally 2020-09 to
-today, union of the archive backfill and recent forecast cycles) plus each
-district's elevation/slope into data/processed/observations_snapshot.npz —
-a few MB of real measured values with their true dates.
-app/services/history_snapshot.py seeds them into any database whose
-observations table is (nearly) empty.
+This script dumps the portions of the ingested record the app actually reads
+(rain_mm and soil_moisture_0_7cm for the last 90 days; river_discharge for the
+last 730 days — enough for the 365d P99 flood-memory features and the
+flood-history page) plus each district's elevation/slope into
+data/processed/observations_snapshot.npz — a few MB of real measured values
+with their true dates. app/services/history_snapshot.py seeds them into any
+database whose observations table is (nearly) empty.
+
+The windows are capped deliberately: Render's free tier has a 512 MB
+ephemeral disk, and a deeper SQLite copy of history would overrun it at
+boot. Raise the windows below only when targeting a host with more space.
 
 Re-run after notable local data refreshes to refresh the shipped baseline.
 
@@ -22,7 +26,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -39,21 +43,26 @@ from app.models import District, Observation  # noqa: E402
 
 OUT_PATH = BASE_DIR / "data" / "processed" / "observations_snapshot.npz"
 VARS = ["rain_mm", "soil_moisture_0_7cm", "river_discharge"]
+# Depth caps sized for Render free's 512 MB ephemeral disk (SQLite needs
+# ~300 B per observation row incl. indexes; keep the seeded copy well under
+# half of it). 730d of discharge covers the causal 365d P99 + flood-history;
+# 90d of rain/soil covers every feature window with a wide bookmark margin.
+DISCHARGE_DAYS = 730
+RAIN_SOIL_DAYS = 90
 
 
 def main() -> None:
-    # Export the full ingested record: start from the earliest real observation
-    # of the three variables (locally 2020-09-01) so the flood-history page and
-    # the discharge-based flood-memory features see the same depth as dev.
-    first = (db.query(func.min(Observation.observed_at))
-             .filter(Observation.variable.in_(VARS)).scalar())
-    if first is None:
-        raise SystemExit("no observations to export")
-    since = first.date()
-    last = (db.query(func.max(Observation.observed_at))
-            .filter(Observation.variable.in_(VARS)).scalar()).date()
+    yesterday_var = {v: (db.query(func.max(Observation.observed_at))
+                         .filter(Observation.variable == v).scalar()) for v in VARS}
+    if not all(yesterday_var.values()):
+        raise SystemExit(f"no observations to export: {yesterday_var}")
+    last = max(t.date() for t in yesterday_var.values())
+    per_var = {"rain_mm": RAIN_SOIL_DAYS, "soil_moisture_0_7cm": RAIN_SOIL_DAYS,
+               "river_discharge": DISCHARGE_DAYS}
+    since = (last - timedelta(days=max(per_var.values()) - 1))
     n_days = (last - since).days + 1
-    print(f"window: {since} .. {last} ({n_days} days)")
+    print(f"window: {since} .. {last} ({n_days} days; "
+          f"depths: {[f'{v}={d}d' for v, d in per_var.items()]})")
 
     districts = db.query(District).all()
     shape_ids = np.array([d.shape_id for d in districts], dtype="U64")
@@ -71,10 +80,12 @@ def main() -> None:
         .all()
     )
     filled = 0
+    min_date = {v: last - timedelta(days=per_var[v] - 1) for v in VARS}
     for did, var, ts, val in rows:
         i = did2row.get(did)
         j = date_idx.get(ts.date())
-        if i is None or j is None or val is None or val != val:
+        if (i is None or j is None or val is None or val != val
+                or ts.date() < min_date[var]):
             continue
         arrays[var][i, j] = float(val)
         filled += 1
