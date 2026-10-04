@@ -115,6 +115,19 @@ async def lifespan(app: FastAPI):
         finally:
             db.close()
         if has_districts and has_scores:
+            # Even a district+score-populated boot may have no observation
+            # history (History / flood-history / latest-data and the live
+            # Check-My-City compute all need it) — top up from the snapshot.
+            try:
+                from .database import SessionLocal as _SL
+                from .services.history_snapshot import maybe_seed_history
+                _db = _SL()
+                try:
+                    await asyncio.to_thread(maybe_seed_history, _db)
+                finally:
+                    _db.close()
+            except Exception as e:  # noqa: BLE001
+                print(f"[startup] history snapshot seed failed (non-fatal): {e}")
             return
         try:
             if not has_districts:
@@ -142,6 +155,19 @@ async def lifespan(app: FastAPI):
                 _db.close()
         except Exception as e:  # noqa: BLE001
             print(f"[startup] snapshot seed failed (non-fatal): {e}")
+        # Observation history from the shipped snapshot: fills the History /
+        # flood-history / latest-data pages and lets Check-My-City and the
+        # first live refresh compute with real series instead of nothing.
+        try:
+            from .database import SessionLocal as _SL
+            from .services.history_snapshot import maybe_seed_history
+            _db = _SL()
+            try:
+                await asyncio.to_thread(maybe_seed_history, _db)
+            finally:
+                _db.close()
+        except Exception as e:  # noqa: BLE001
+            print(f"[startup] history snapshot seed failed (non-fatal): {e}")
         try:
             # The first cycle can come back empty when the upstream forecast
             # API throttles a fresh IP (429): a couple of quick retries here
